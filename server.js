@@ -13,7 +13,11 @@ const port = 4000;
 
 // middlewares
 app.use(express.json());
-app.use(cors());
+app.use(
+  cors({
+    origin: "https://the-kadiyan-table-fontend.vercel.app",
+  })
+);
 
 // db connection
 connectDB();
