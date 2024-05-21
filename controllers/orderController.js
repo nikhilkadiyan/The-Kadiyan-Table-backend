@@ -37,8 +37,8 @@ const placeOrder = async (req, res) => {
     });
 
     const session = await stripe.checkout.sessions.create({
-      success_url: `http://localhost:5173/verify?success=true&orderId=${newOrder._id}`,
-      cancel_url: `http://localhost:5173/verify?success=false&orderId=${newOrder._id}`,
+      success_url: `https://the-kadiyan-table-fontend.vercel.app/verify?success=true&orderId=${newOrder._id}`,
+      cancel_url: `https://the-kadiyan-table-fontend.vercel.app/verify?success=false&orderId=${newOrder._id}`,
       line_items: line_items,
       mode: "payment",
     });
@@ -85,7 +85,7 @@ const updateStatus = async (req, res) => {
 };
 
 const verifyOrder = async (req, res) => {
-  const { orderId, success } = req.body;
+  const { orderId, success } = req.query;
   try {
     if (success === "true") {
       await orderModel.findByIdAndUpdate(orderId, { payment: true });
