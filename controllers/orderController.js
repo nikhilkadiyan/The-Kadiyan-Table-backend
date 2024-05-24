@@ -83,7 +83,7 @@ const verifyOrder = async (req, res) => {
         { cartData: {} },
         { useFindAndModify: false }
       );
-      res.redirect(`http://localhost:5173/myorders`);
+      res.redirect(`https://the-kadiyan-table-fontend.vercel.app/myorders`);
     } else {
       await orderModel.findByIdAndDelete(order._id);
       res.json({ success: false, message: "Not Paid" });
