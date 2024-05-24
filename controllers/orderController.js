@@ -1,49 +1,26 @@
 import orderModel from "../models/orderModel.js";
 import userModel from "../models/userModel.js";
-import Stripe from "stripe";
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+import { instance } from "../server.js";
+import crypto from "crypto";
 // Placing User Order for Frontend
 const placeOrder = async (req, res) => {
   try {
+    const options = {
+      amount: Number(req.body.amount) * 100, // amount in the smallest currency unit
+      currency: "INR",
+    };
+    const order = await instance.orders.create(options);
+
     const newOrder = new orderModel({
       userId: req.body.userId,
       items: req.body.items,
       amount: req.body.amount,
       address: req.body.address,
+      orderId: order.id,
     });
     await newOrder.save();
-    await userModel.findByIdAndUpdate(req.body.userId, { cartData: {} });
 
-    const line_items = req.body.items.map((item) => ({
-      price_data: {
-        currency: "inr",
-        product_data: {
-          name: item.name,
-        },
-        unit_amount: item.price * 100,
-      },
-      quantity: item.quantity,
-    }));
-
-    line_items.push({
-      price_data: {
-        currency: "inr",
-        product_data: {
-          name: "Delivery Charge",
-        },
-        unit_amount: 80 * 100,
-      },
-      quantity: 1,
-    });
-
-    const session = await stripe.checkout.sessions.create({
-      success_url: `https://the-kadiyan-table-fontend.vercel.app/verify?success=true&orderId=${newOrder._id}`,
-      cancel_url: `https://the-kadiyan-table-fontend.vercel.app/verify?success=false&orderId=${newOrder._id}`,
-      line_items: line_items,
-      mode: "payment",
-    });
-
-    res.json({ success: true, session_url: session.url });
+    res.json({ success: true, order });
   } catch (error) {
     console.log(error);
     res.json({ success: false, message: "Error" });
@@ -85,18 +62,58 @@ const updateStatus = async (req, res) => {
 };
 
 const verifyOrder = async (req, res) => {
-  const { orderId, success } = req.query;
+  const { razorpay_order_id, razorpay_payment_id, razorpay_signature } =
+    req.body;
   try {
-    if (success === "true") {
-      await orderModel.findByIdAndUpdate(orderId, { payment: true });
-      res.json({ success: true, message: "Paid" });
+    const body = razorpay_order_id + "|" + razorpay_payment_id;
+
+    const expectedSignature = crypto
+      .createHmac("sha256", process.env.RAZORPAY_API_SECRET)
+      .update(body.toString())
+      .digest("hex");
+
+    const isAuthentic = expectedSignature === razorpay_signature;
+    const order = await orderModel.findOne({ orderId: razorpay_order_id });
+    if (isAuthentic) {
+      await orderModel.findByIdAndUpdate(order._id, {
+        payment: true,
+      });
+      await userModel.findOneAndUpdate(
+        { _id: order.userId },
+        { cartData: {} },
+        { useFindAndModify: false }
+      );
+      res.redirect(`http://localhost:5173/myorders`);
     } else {
-      await orderModel.findByIdAndDelete(orderId);
+      await orderModel.findByIdAndDelete(order._id);
       res.json({ success: false, message: "Not Paid" });
     }
   } catch (error) {
+    const order = await orderModel.findOne({ orderId: razorpay_order_id });
+    await orderModel.findByIdAndDelete(order._id);
     res.json({ success: false, message: "Not  Verified" });
   }
 };
 
-export { placeOrder, listOrders, userOrders, updateStatus, verifyOrder };
+const cancelPayment = async (req, res) => {
+  const { orderId } = req.body;
+  try {
+    const result = await orderModel.deleteOne({ orderId: orderId });
+    if (result.deletedCount > 0) {
+      res
+        .status(200)
+        .send({ success: true, message: "Order deleted successfully" });
+    } else {
+      res.status(404).send({ success: false, message: "Order not found" });
+    }
+  } catch (error) {}
+};
+
+export {
+  placeOrder,
+  listOrders,
+  userOrders,
+  updateStatus,
+  verifyOrder,
+  cancelPayment,
+};
